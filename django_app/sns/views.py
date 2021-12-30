@@ -1,31 +1,38 @@
 from os import O_WRONLY
-from django.db.models.query_utils import select_related_descend
-from django.shortcuts import render
-from django.shortcuts import redirect
-from django.contrib.auth.models import User
+
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.contrib.auth.decorators import login_required
+from django.db.models.query_utils import select_related_descend
+from django.shortcuts import redirect, render
 
-from .models import Message,Friend,Group,Good
-from .forms import GroupCheckForm, GroupSelectForm,FriendsForm,CreateGroupForm,PostForm
+from .forms import (
+    CreateGroupForm,
+    FriendsForm,
+    GroupCheckForm,
+    GroupSelectForm,
+    PostForm,
+)
+from .models import Friend, Good, Group, Message
+
 # Create your views here.
 
 # indexのビュー関数
-@login_required(login_url='/admin/login')
+@login_required(login_url="/admin/login")
 def index(request, page=1):
     # publicのuserを取得
     (public_user, public_group) = get_public()
 
     # POST送信時の処理
-    if request.method == 'POST':
+    if request.method == "POST":
         # Groupのチェックを更新した時の処理
         # フォームの用意
         checkform = GroupCheckForm(request.user, request.POST)
         # チェックされたGroupをリストにまとめる
-        glist = []
-        for item in request.POST.getlist('group'):
+        glist: list[str] = []
+        for item in request.POST.getlist("group"):
             glist.append(item)
         # Messageの取得
         messages = get_your_group_message(request.user, glist, page)
@@ -44,21 +51,22 @@ def index(request, page=1):
 
     # 共通処理
     params = {
-        'login_user':request.user,
-        'contents':messages,
-        'check_form':checkform,
+        "login_user": request.user,
+        "contents": messages,
+        "check_form": checkform,
     }
-    return render(request, 'index.html', params)
+    return render(request, "index.html", params)
 
-@login_required(login_url='/admin/login/')
+
+@login_required(login_url="/admin/login/")
 def groups(request):
     # 自分が登録したFriendを取得
     friends = Friend.objects.filter(owner=request.user)
 
     # POST送信時の処理
-    if request.POST['mode'] == '__groups_form__':
+    if request.POST["mode"] == "__groups_form__":
         # 選択したGroup名を取得
-        sel_group = request.POST['groups']
+        sel_group = request.POST["groups"]
         # Groupを取得
         gp = Group.objects.filter(owner=request.user).filter(title=sel_group).first()
         # Groupに含まれるFriendを取得
@@ -73,17 +81,17 @@ def groups(request):
         frinedsform = FriendsForm(request.user, friends=friends, vals=vlist)
 
     # Friendsのチェック更新時の処理
-    if request.POST['mode'] == '__friends_form__':
+    if request.POST["mode"] == "__friends_form__":
         # 選択したGroupの取得
-        sel_group = request.POST['group']
+        sel_group = request.POST["group"]
         group_obj = Group.objects.filter(title=sel_group).first()
         print(group_obj)
         # チェックしたFriendsを取得
-        sel_fds = request.POST.getlist('friends')
+        sel_fds = request.POST.getlist("friends")
         # FriendsのUserを取得
-        sel_users = User.objects.filter(username__in = sel_fds)
+        sel_users = User.objects.filter(username__in=sel_fds)
         # Userのリストに含まれるユーザが登録したFriendを取得
-        fds = Friend.objects.filter(owner=request.user).filter(user__in = sel_users)
+        fds = Friend.objects.filter(owner=request.user).filter(user__in=sel_users)
         # 全てのFriendにGroupを設定し保存する
         vlist = []
         for item in fds:
@@ -91,9 +99,9 @@ def groups(request):
             item.save()
             vlist.append(item.user.username)
         # メッセージを設定
-        messages.success(request, 'チェックされたFriendを' + sel_group + 'に登録しました。')
+        messages.success(request, "チェックされたFriendを" + sel_group + "に登録しました。")
         # フォームの用意
-        groupsform = GroupSelectForm(request.user, {'groups':sel_group})
+        groupsform = GroupSelectForm(request.user, {"groups": sel_group})
         frinedsform = FriendsForm(request.user, friends=friends, vals=vlist)
 
     # GETアクセス時の処理
@@ -101,37 +109,38 @@ def groups(request):
         # フォームの用意
         groupsform = GroupSelectForm(request.user)
         friendsform = FriendsForm(request.user, friends=friends, vals=[])
-        sel_group = '-'
+        sel_group = "-"
 
     # 共通処理
     createform = CreateGroupForm()
     params = {
-        'login_user':request.user,
-        'group_form':groupsform,
-        'friens_form':friendsform,
-        'create_form':createform,
-        'group':sel_group,
+        "login_user": request.user,
+        "group_form": groupsform,
+        "friens_form": friendsform,
+        "create_form": createform,
+        "group": sel_group,
     }
-    return render(request, 'groups.html', params)
+    return render(request, "groups.html", params)
+
 
 # Friendの追加処理
-@login_required(login_url='/admin/login/')
+@login_required(login_url="/admin/login/")
 def add(request):
     # 追加するUserを取得
-    add_name = request.GET['name']
+    add_name = request.GET["name"]
     add_user = User.objects.filter(username=add_name).first()
     # Userが本人だった場合の処理
     if add_user == request.user:
         messages.info(request, "自分自身をFriendに追加することはできません。")
-        return redirect(to='/sns')
+        return redirect(to="/sns")
     # publicの取得
     (public_user, public_group) = get_public()
     # add_userのFriendの数を調べる
     frd_num = Friend.objects.filter(owner=request.user).filter(user=add_user).count()
     # ゼロより大きければ既に登録済み
     if frd_num > 0:
-        messages.info(request, add_user.username + 'は既に追加されています。')
-        return redirect(to='/sns')
+        messages.info(request, add_user.username + "は既に追加されています。")
+        return redirect(to="/sns")
 
     # ここからFriendの登録処理
     frd = Friend()
@@ -140,29 +149,35 @@ def add(request):
     frd.group = public_group
     frd.save()
     # メッセージを設定
-    messages.success(request, add_user.username + 'を追加しました \
-                        groupページに移動して、追加したFriendをメンバーに設定してください。')
-    return redirect(to='/sns')
+    messages.success(
+        request,
+        add_user.username
+        + "を追加しました \
+                        groupページに移動して、追加したFriendをメンバーに設定してください。",
+    )
+    return redirect(to="/sns")
+
 
 # グループの作成処理
-@login_required(login_url='/admin/login/')
+@login_required(login_url="/admin/login/")
 def creategroup(request):
     # Groupを作り、Userとtitleを設定して保存する
     gp = Group()
     gp.owner = request.user
-    gp.title = request.user.username + 'の' + request.POST['group_name']
+    gp.title = request.user.username + "の" + request.POST["group_name"]
     gp.save()
-    messages.info(request, '新しいグループを作成しました。')
-    return redirect(to='/groups')
+    messages.info(request, "新しいグループを作成しました。")
+    return redirect(to="/groups")
+
 
 # メッセージのポスト処理
-@login_required(login_url='/admin/login/')
+@login_required(login_url="/admin/login/")
 def post(request):
     # POST送信の処理
-    if request.method == 'POST':
+    if request.method == "POST":
         # 送信内容の取得
-        gr_name = request.POST['groups']
-        content = request.POST['content']
+        gr_name = request.POST["groups"]
+        content = request.POST["content"]
         # Groupの取得
         group = Group.objects.filter(owner=request.user).filter(title=gr_name).first()
         if group == None:
@@ -174,8 +189,8 @@ def post(request):
         msg.content = content
         msg.save()
         # メッセージを設定
-        messages.success(request, '新しいメッセージを投稿しました')
-        return redirect(to='/sns')
+        messages.success(request, "新しいメッセージを投稿しました")
+        return redirect(to="/sns")
 
     # GETアクセス時の処理
     else:
@@ -183,22 +198,23 @@ def post(request):
 
     # 共通処理
     params = {
-        'login_user':request.user,
-        'form':form,
+        "login_user": request.user,
+        "form": form,
     }
-    return render(request, 'post.html', params)
+    return render(request, "post.html", params)
+
 
 # 投稿をシェアする
-@login_required(login_url='/admin/login/')
+@login_required(login_url="/admin/login/")
 def share(request, share_id):
     # シェアするMessageの取得
     share = Message.objects.get(id=share_id)
     print(share)
     # POST送信時の処理
-    if request.method == 'POST':
+    if request.method == "POST":
         # 送信内容を取得
-        gr_name = request.POST['groups']
-        content = request.POST['content']
+        gr_name = request.POST["groups"]
+        content = request.POST["content"]
         # Groupの取得
         group = Group.objects.filter(owner=request.user).filter(title=gr_name).first()
         if group == None:
@@ -214,20 +230,21 @@ def share(request, share_id):
         share_msg.share_count += 1
         share_msg.save()
         # メッセージを設定
-        messages.success(request, 'メッセージをシェアしました')
-        return redirect(to='/sns')
+        messages.success(request, "メッセージをシェアしました")
+        return redirect(to="/sns")
 
     # 共通処理
     form = PostForm(request.user)
     params = {
-        'login_user':request.user,
-        'form':form,
-        'share':share,
+        "login_user": request.user,
+        "form": form,
+        "share": share,
     }
-    return render(request, 'share.html', params)
+    return render(request, "share.html", params)
+
 
 # goodボタンの処理
-@login_required(login_url='/admin/login/')
+@login_required(login_url="/admin/login/")
 def good(request, good_id):
     # goodするMessageを取得
     good_msg = Message.objects.get(id=good_id)
@@ -235,30 +252,32 @@ def good(request, good_id):
     is_good = Good.objects.filter(owner=request.user).filter(message=good_msg).count()
     # ゼロより大きければ既にgood済み
     if is_good > 0:
-        messages.success(request, '既にメッセージにはGoodしています。')
-        return redirect(to='/sns')
+        messages.success(request, "既にメッセージにはGoodしています。")
+        return redirect(to="/sns")
 
     # Messageのgood_countを1増やす
     good_msg.good_count += 1
     good_msg.save()
     # Goodを作成し、設定して保存
     good = Good()
-    good,owner = request.user
+    good, owner = request.user
     good.message = good_msg
     good.save()
     # メッセージを設定
-    messages.success(request, 'メッセージにGoodしました')
-    return redirect(to='/sns')
+    messages.success(request, "メッセージにGoodしました")
+    return redirect(to="/sns")
+
 
 # 共通部品---------------------------------------------------------
 # 指定されたグループ、検索文字によるMessageの取得
 def get_your_group_message(owner, glist, page):
-    page_num = 10 #ページあたりの表示数
+    page_num = 10  # ページあたりの表示数
     # publicの取得
     (public_user, public_group) = get_public()
     # チェックされたGroupの取得
-    groups = Group.objects.filter(Q(owner=owner) \
-                |Q(owner=public_user)).filter(title__in=glist)
+    groups = Group.objects.filter(Q(owner=owner) | Q(owner=public_user)).filter(
+        title__in=glist
+    )
     # Groupに含まれるFriendの取得
     me_friends = Friend.objects.filter(group__in=groups)
     # FriendのUserをリストにまとめる
@@ -267,20 +286,19 @@ def get_your_group_message(owner, glist, page):
         me_users.append(f.user)
     # UserリストのUserが作ったGroupの取得
     his_groups = Group.objects.filter(owner__in=me_users)
-    his_friends = Friend.objects.filter(user=owner) \
-        .filter(group__in=his_groups)
+    his_friends = Friend.objects.filter(user=owner).filter(group__in=his_groups)
     me_groups = []
     for hf in his_friends:
         me_groups.append(hf.group)
     # groupがgroupsに含まれるか、me_groupsの含まれるMessageの取得
-    messages = Message.objects.filter(Q(group__in=groups) \
-        |Q(group__in=me_groups))
+    messages = Message.objects.filter(Q(group__in=groups) | Q(group__in=me_groups))
     # ページネーションで指定ページを取得
     page_item = Paginator(messages, page_num)
     return page_item.get_page(page)
 
+
 # publicなUserとGroupを取得
-def get_public():
-    public_user = User.objects.filter(username='public').first()
+def get_public() -> tuple:
+    public_user = User.objects.filter(username="public").first()
     public_group = Group.objects.filter(owner=public_user).first()
-    return(public_user, public_group)
+    return (public_user, public_group)
